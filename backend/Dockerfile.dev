@@ -1,0 +1,22 @@
+# Use Node.js v20 (lightweight alpine variant since API doesn’t need build tools)
+FROM node:20-alpine
+
+# Set working directory inside the container
+WORKDIR /app
+
+# Copy dependency manifests first (better build cache)
+COPY package*.json ./
+
+# Install dependencies strictly according to package-lock.json
+# "npm ci" is faster and ensures a reproducible install
+RUN npm ci
+
+# Copy all the source code
+COPY . .
+
+# Expose port 8080 (our Express/Nodemon server runs here)
+EXPOSE 8080
+
+# Run backend in dev mode (nodemon restarts server on changes)
+CMD ["npm","run","dev"]
+

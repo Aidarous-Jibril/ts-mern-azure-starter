@@ -1,0 +1,107 @@
+# services:
+#   mongo:
+#     image: mongo:6
+#     container_name: tsmern-mongo
+#     ports:
+#       - "27017:27017"
+#     volumes:
+#       - mongo-data:/data/db
+
+#   backend:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile.dev
+#     container_name: tsmern-api
+#     env_file:
+#       - backend/.env
+#     environment:
+#       - CHOKIDAR_USEPOLLING=true
+#     volumes:
+#       - ./backend:/app
+#       - /app/node_modules
+#     ports:
+#       - "8080:8080"
+#     depends_on:
+#       - mongo
+#     # use CMD from Dockerfile.dev (nodemon) or uncomment the next line:
+#     # command: npm run dev
+
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile.dev
+#     container_name: tsmern-web
+#     env_file:
+#       - frontend/.env
+#     environment:
+#       - CHOKIDAR_USEPOLLING=true
+#     volumes:
+#       - ./frontend:/app
+#       - /app/node_modules
+#     ports:
+#       - "5173:5173"
+#     depends_on:
+#       - backend
+#     # ensure Vite binds to all interfaces
+#     command: npm run dev -- --host 0.0.0.0
+
+# volumes:
+#   mongo-data:
+
+
+
+services:
+  # MongoDB database service
+  mongo:
+    image: mongo:6                        # Use official MongoDB 6 image
+    container_name: tsmern-mongo          # Name for easier docker ps/docker logs
+    restart: unless-stopped               # in docker-compose.yml, under each service:
+    ports:
+      - "27017:27017"                      # Map container port → host port
+    volumes:
+      - mongo-data:/data/db                # Persist DB data outside container
+
+  # Backend Node.js API service
+  backend:
+    build:
+      context: ./backend                   # Path to backend folder
+      dockerfile: Dockerfile.dev           # Use our dev Dockerfile
+    container_name: tsmern-api
+    env_file:
+      - backend/.env                       # Load environment variables
+    environment:
+      - CHOKIDAR_USEPOLLING=true           # Fix for file watching inside Docker
+    volumes:
+      - ./backend:/app                     # Mount local backend code → container
+      - /app/node_modules                  # Keep container node_modules separate
+    ports:
+      - "8080:8080"                        # Map backend port
+    depends_on:
+      - mongo                              # Ensure mongo starts first
+    # By default uses CMD in Dockerfile.dev (nodemon).
+    # Uncomment next line to override manually:
+    # command: npm run dev
+
+  # Frontend Vite dev server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: tsmern-web
+    env_file:
+      - frontend/.env                      # Load frontend .env variables (VITE_*)
+    environment:
+      - CHOKIDAR_USEPOLLING=true           # Fix file watching in Docker
+    volumes:
+      - ./frontend:/app                    # Mount frontend code → container
+      - /app/node_modules                  # Keep node_modules isolated
+    ports:
+      - "5173:5173"                        # Expose frontend dev server
+    depends_on:
+      - backend                            # Ensure backend starts first
+    # Override CMD in Dockerfile to enforce Vite host binding
+    command: npm run dev -- --host 0.0.0.0
+
+# Volume for MongoDB persistence
+volumes:
+  mongo-data:

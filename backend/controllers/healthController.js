@@ -1,1 +1,1 @@
-export const health = (req, res) => res.json({ ok: true, ts: Date.now() });
+export const health = (req, res) => res.json({ ok: true, msg: "Hello" });
