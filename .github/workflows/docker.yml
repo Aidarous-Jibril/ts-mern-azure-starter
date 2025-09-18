@@ -55,15 +55,11 @@ jobs:
           file: ./${{ matrix.app }}/Dockerfile.prod
           push: true
           platforms: linux/amd64,linux/arm64
-          # Turn these off so GHCR doesn't add "unknown" attestations
           provenance: false
           sbom: false
           tags: |
             ${{ steps.vars.outputs.IMAGE }}:latest
             ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.BRANCH_TAG }}
             ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.SHA_TAG }}
-          # Frontend-only build arg
           build-args: |
             ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
