@@ -40,10 +40,9 @@ jobs:
       - name: Set image vars (lowercase owner)
         id: vars
         run: |
-          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "IMAGE=${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}" >> $GITHUB_OUTPUT
           echo "SHA_TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-          echo "IMAGE=${{ env.REGISTRY }}/${OWNER_LC}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}" >> $GITHUB_OUTPUT
 
       - name: Build & push ${{ matrix.app }}
         uses: docker/build-push-action@v6
