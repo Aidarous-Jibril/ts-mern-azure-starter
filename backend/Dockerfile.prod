@@ -1,3 +1,7 @@
+#Builds backend in two stages:
+#deps stage installs only production dependencies.
+#runner stage copies code + node_modules and runs node src/server.js.
+
 # ---------- deps ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
@@ -14,3 +18,5 @@ COPY . .
 EXPOSE 8080
 USER node
 CMD ["node","src/server.js"]
+
+#echo "# trigger CI practice $(date)"
