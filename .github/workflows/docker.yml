@@ -1,3 +1,4 @@
+# .github/workflows/docker.yml
 name: Build & Push Docker Images (GHCR)
 
 on:
@@ -24,11 +25,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      - name: Set up QEMU (enable emulation)
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
+      - name: Set up Docker Buildx (container driver)
         uses: docker/setup-buildx-action@v3
+        with:
+          install: true
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -45,16 +48,22 @@ jobs:
           echo "SHA_TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
           echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Build & push ${{ matrix.app }}
+      - name: Build & push ${{ matrix.app }} (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.app }}
           file: ./${{ matrix.app }}/Dockerfile.prod
           push: true
           platforms: linux/amd64,linux/arm64
+          # Turn these off so GHCR doesn't add "unknown" attestations
+          provenance: false
+          sbom: false
           tags: |
             ${{ steps.vars.outputs.IMAGE }}:latest
             ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.BRANCH_TAG }}
             ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.SHA_TAG }}
+          # Frontend-only build arg
           build-args: |
             ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
