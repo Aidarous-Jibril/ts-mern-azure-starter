@@ -8,41 +8,28 @@ services:
   mongo:
     image: mongo:6
     container_name: tsmern-mongo
-    volumes:
-      - mongo-data:/data/db
+    volumes: [ mongo-data:/data/db ]
     restart: unless-stopped
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod 
-    image: ts-mern-azure-starter-backend:prod
+    image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-backend:latest
     container_name: tsmern-api
-    env_file:
-      - backend/.env
+    env_file: [ backend/.env ]
     environment:
       - NODE_ENV=production
       - MONGO_URI=mongodb://mongo:27017/tsmern
       - PORT=8080
-    depends_on:
-      - mongo
-    ports:
-      - "8080:8080"    # hostPort:containerPort
+    depends_on: [ mongo ]
+    ports: [ "8080:8080" ]
     restart: unless-stopped
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod 
-      args:
-        VITE_API_URL: "http://localhost:8080"
-    image: ts-mern-azure-starter-frontend:prod
+    image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-frontend:latest
     container_name: tsmern-web
-    depends_on:
-      - backend
-    ports:
-      - "8081:80"     # hostPort:containerPort
+    depends_on: [ backend ]
+    ports: [ "8081:80" ]
     restart: unless-stopped
 
 volumes:
   mongo-data:
+
