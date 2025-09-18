@@ -1,5 +1,5 @@
 import expressAsyncHandler from "express-async-handler";
-import Todo from "../models/todo";
+import Todo from '../models/Todo.js';
 
 // GET /api/todos
 export const list = expressAsyncHandler(async (req, res) => {
