@@ -17,7 +17,8 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     strategy:
-      matrix: { app: [backend, frontend] }
+      matrix:
+        app: [backend, frontend]
 
     steps:
       - name: Checkout
@@ -26,73 +27,36 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Buildx
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image names
+      - name: Set image vars (lowercase owner)
         id: vars
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "SHA=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          echo "BR=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+          echo "SHA_TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "IMAGE=${{ env.REGISTRY }}/${OWNER_LC}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}" >> $GITHUB_OUTPUT
 
-      # Build & push per-arch (amd64)
-      - name: Build amd64 - ${{ matrix.app }}
+      - name: Build & push ${{ matrix.app }}
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.app }}
           file: ./${{ matrix.app }}/Dockerfile.prod
-          platforms: linux/amd64
           push: true
+          platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false
-          tags: ${{ steps.vars.outputs.IMAGE }}:amd64-${{ steps.vars.outputs.SHA }}
+          tags: |
+            ${{ steps.vars.outputs.IMAGE }}:latest
+            ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.BRANCH_TAG }}
+            ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.SHA_TAG }}
           build-args: |
             ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
-
-      - name: Verify amd64 exists in registry
-        run: |
-          docker buildx imagetools inspect "${{ steps.vars.outputs.IMAGE }}:amd64-${{ steps.vars.outputs.SHA }}" >/dev/null
-
-      # Build & push per-arch (arm64)
-      - name: Build arm64 - ${{ matrix.app }}
-        uses: docker/build-push-action@v6
-        with:
-          context: ./${{ matrix.app }}
-          file: ./${{ matrix.app }}/Dockerfile.prod
-          platforms: linux/arm64
-          push: true
-          provenance: false
-          sbom: false
-          tags: ${{ steps.vars.outputs.IMAGE }}:arm64-${{ steps.vars.outputs.SHA }}
-          build-args: |
-            ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
-
-      - name: Verify arm64 exists in registry
-        run: |
-          docker buildx imagetools inspect "${{ steps.vars.outputs.IMAGE }}:arm64-${{ steps.vars.outputs.SHA }}" >/dev/null
-
-      # Stitch multi-arch manifest
-      - name: Create multi-arch manifest
-        run: |
-          IMAGE="${{ steps.vars.outputs.IMAGE }}"
-          SHA="${{ steps.vars.outputs.SHA }}"
-          BR="${{ steps.vars.outputs.BR }}"
-
-          docker buildx imagetools create \
-            -t "${IMAGE}:latest" \
-            -t "${IMAGE}:${BR}" \
-            -t "${IMAGE}:${SHA}" \
-            "${IMAGE}:amd64-${SHA}" \
-            "${IMAGE}:arm64-${SHA}"
-
-          echo "==== FINAL MANIFEST (latest) ===="
-          docker buildx imagetools inspect "${IMAGE}:latest"
