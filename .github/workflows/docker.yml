@@ -24,7 +24,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
+      # Make a lowercase owner for GHCR path (bash expansion)
+      - name: Derive lowercase owner / tags
+        run: |
+          echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+          echo "SHA_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -37,25 +44,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image vars (lowercase owner)
-        id: vars
-        run: |
-          echo "IMAGE=${{ env.REGISTRY }}/${{ toLower(github.repository_owner) }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}" >> $GITHUB_OUTPUT
-          echo "SHA_TAG=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-          echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
       - name: Build & push ${{ matrix.app }}
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.app }}
           file: ./${{ matrix.app }}/Dockerfile.prod
-          push: true
           platforms: linux/amd64,linux/arm64
-          provenance: false
-          sbom: false
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
-            ${{ steps.vars.outputs.IMAGE }}:latest
-            ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.BRANCH_TAG }}
-            ${{ steps.vars.outputs.IMAGE }}:${{ steps.vars.outputs.SHA_TAG }}
+            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:latest
+            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.BRANCH_TAG }}
+            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.SHA_TAG }}
           build-args: |
             ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
+          provenance: false
+          sbom: false
