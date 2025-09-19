@@ -1,35 +1,89 @@
-#Defines how to run the 3 services together:
+# #Defines how to run the 3 services together:
 
-  #mongo → database
-  #backend → Node.js API (based on backend/Dockerfile.prod)
-  #frontend → Nginx container serving React build (based on frontend/Dockerfile.prod)
+#   #mongo → database
+#   #backend → Node.js API (based on backend/Dockerfile.prod)
+#   #frontend → Nginx container serving React build (based on frontend/Dockerfile.prod)
+
+# services:
+#   mongo:
+#     image: mongo:6
+#     container_name: tsmern-mongo
+#     volumes: [ mongo-data:/data/db ]
+#     restart: unless-stopped
+
+#   backend:
+#     image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-backend:latest
+#     container_name: tsmern-api
+#     env_file: [ backend/.env ]
+#     environment:
+#       - NODE_ENV=production
+#       - MONGO_URI=mongodb://mongo:27017/tsmern
+#       - PORT=8080
+#     depends_on: [ mongo ]
+#     ports: [ "8080:8080" ]
+#     restart: unless-stopped
+
+#   frontend:
+#     image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-frontend:latest
+#     container_name: tsmern-web
+#     depends_on: [ backend ]
+#     ports: [ "8081:80" ]
+#     restart: unless-stopped
+
+# volumes:
+#   mongo-data:
+
+
+
+version: "3.9"
 
 services:
   mongo:
     image: mongo:6
     container_name: tsmern-mongo
-    volumes: [ mongo-data:/data/db ]
+    volumes:
+      - mongo-data:/data/db
     restart: unless-stopped
+    ports:
+      - "27017:27017"
 
   backend:
-    image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-backend:latest
     container_name: tsmern-api
-    env_file: [ backend/.env ]
+    # ---- Option A: build locally from your repo (use this now) ----
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    # ---- Option B: pull from GHCR (comment Option A and uncomment below) ----
+    # image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-backend:latest
+
+    env_file:
+      - ./backend/.env
     environment:
       - NODE_ENV=production
       - MONGO_URI=mongodb://mongo:27017/tsmern
       - PORT=8080
-    depends_on: [ mongo ]
-    ports: [ "8080:8080" ]
+    depends_on:
+      - mongo
+    ports:
+      - "8080:8080"
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-frontend:latest
     container_name: tsmern-web
-    depends_on: [ backend ]
-    ports: [ "8081:80" ]
+    # ---- Option A: build locally (use this now) ----
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: "http://localhost:8080"
+    # ---- Option B: pull from GHCR (comment Option A and uncomment below) ----
+    # image: ghcr.io/aidarous-jibril/ts-mern-azure-starter-frontend:latest
+
+    depends_on:
+      - backend
+    ports:
+      - "8081:80"
     restart: unless-stopped
 
 volumes:
   mongo-data:
-

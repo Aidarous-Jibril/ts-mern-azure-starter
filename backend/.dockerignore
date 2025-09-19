@@ -4,3 +4,13 @@ Dockerfile*
 .dockerignore
 .env
 .git
+
+# node_modules
+# npm-debug.log
+# .DS_Store
+# .git
+# .gitignore
+# .dockerignore
+# Dockerfile*
+# .env*
+# coverage
