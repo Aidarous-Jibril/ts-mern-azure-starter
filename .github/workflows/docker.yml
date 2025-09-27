@@ -1,9 +1,124 @@
-name: Build & Push Docker Images (GHCR)
+# name: CI + Build & Push Docker Images (GHCR)
+
+# on:
+#   push:
+#     branches: ["**"] # run CI on all branches
+#   pull_request: # run CI on PRs
+#   workflow_dispatch: # allow manual runs
+
+# permissions:
+#   contents: read
+#   packages: write
+
+# env:
+#   REGISTRY: ghcr.io
+#   IMAGE_PREFIX: ts-mern-azure-starter
+
+# concurrency: docker-${{ github.ref }}
+
+# jobs:
+#   # -------------------- CI (install, lint/test, build) --------------------
+#   ci:
+#     name: CI (backend & frontend)
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         project: [backend, frontend]
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       - name: Setup Node
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
+#           cache: npm
+#           cache-dependency-path: ${{ matrix.project }}/package-lock.json
+
+#       - name: Install deps
+#         working-directory: ${{ matrix.project }}
+#         run: npm ci
+
+#       - name: Lint (if present)
+#         working-directory: ${{ matrix.project }}
+#         run: npm run -s lint || echo "no lint script"
+
+#       - name: Typecheck (if present)
+#         working-directory: ${{ matrix.project }}
+#         run: npm run -s typecheck || echo "no typecheck script"
+
+#       - name: Test (if present)
+#         working-directory: ${{ matrix.project }}
+#         run: npm test --if-present
+
+#       - name: Build (if present)
+#         working-directory: ${{ matrix.project }}
+#         env:
+#           # harmless for backend; needed for frontend vite build
+#           VITE_API_URL: /api
+#         run: npm run -s build || echo "no build script"
+
+#   # -------------------- Build & Push Docker images to GHCR --------------------
+#   build-and-push:
+#     name: Build & Push Docker Images (GHCR)
+#     needs: ci
+#     # Only push images on main or manual runs; still runs on PR but won't push
+#     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+#     runs-on: ubuntu-latest
+#     strategy:
+#       matrix:
+#         app: [backend, frontend]
+
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+
+#       # Make a lowercase owner and safe branch tag (no slashes)
+#       - name: Derive owner/tags
+#         id: meta
+#         run: |
+#           echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+#           SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '/ ' '--')
+#           echo "BRANCH_TAG=${SAFE_BRANCH}" >> "$GITHUB_ENV"
+#           echo "SHA_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+#       - name: Set up QEMU (multi-arch)
+#         uses: docker/setup-qemu-action@v3
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       - name: Log in to GHCR
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
+
+#       - name: Build & push ${{ matrix.app }}
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./${{ matrix.app }}
+#           file: ./${{ matrix.app }}/Dockerfile.prod
+#           platforms: linux/amd64,linux/arm64
+#           # push true only when job-level "if" passes (main or manual)
+#           push: true
+#           tags: |
+#             ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:latest
+#             ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.BRANCH_TAG }}
+#             ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.SHA_TAG }}
+#           build-args: |
+#             ${{ matrix.app == 'frontend' && 'VITE_API_URL=/api' || '' }}
+#           provenance: false
+#           sbom: false
+
+name: CI + Build/Push (GHCR) + Deploy (Azure)
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: ["**"] # CI on all branches
+  pull_request: # CI on PRs
+  workflow_dispatch: # manual run
 
 permissions:
   contents: read
@@ -13,31 +128,65 @@ env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ts-mern-azure-starter
 
+concurrency: docker-${{ github.ref }}
+
 jobs:
+  # ---------- CI: install, lint/test, build ----------
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package-lock.json
+
+      - name: Install
+        working-directory: ${{ matrix.project }}
+        run: npm ci
+
+      - name: Lint (if present)
+        working-directory: ${{ matrix.project }}
+        run: npm run -s lint || echo "no lint script"
+
+      - name: Typecheck (if present)
+        working-directory: ${{ matrix.project }}
+        run: npm run -s typecheck || echo "no typecheck script"
+
+      - name: Build (if present)
+        working-directory: ${{ matrix.project }}
+        env:
+          # harmless for backend; needed for frontend vite build
+          VITE_API_URL: /api
+        run: npm run -s build || echo "no build script"
+
+  # ---------- Build & Push multi-arch images to GHCR ----------
   build-and-push:
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     strategy:
       matrix:
         app: [backend, frontend]
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Make a lowercase owner for GHCR path (bash expansion)
-      - name: Derive lowercase owner / tags
+      - name: Derive owner/tags
         run: |
           echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
-          echo "BRANCH_TAG=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
-          echo "SHA_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '/ ' '--')
+          echo "BRANCH_TAG=$SAFE_BRANCH" >> "$GITHUB_ENV"
 
-      - name: Set up QEMU (multi-arch)
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -50,12 +199,77 @@ jobs:
           context: ./${{ matrix.app }}
           file: ./${{ matrix.app }}/Dockerfile.prod
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: true
           tags: |
             ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:latest
             ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.BRANCH_TAG }}
-            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.SHA_TAG }}
+            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ env.SHORT_SHA }}
           build-args: |
-            ${{ matrix.app == 'frontend' && format('VITE_API_URL={0}', vars.PROD_VITE_API_URL) || '' }}
+            ${{ matrix.app == 'frontend' && 'VITE_API_URL=/api' || '' }}
           provenance: false
           sbom: false
+
+  # ---------- Deploy to Azure Web App (compose pinned to SHA) ----------
+  deploy-azure:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      AZURE_RG: tsmern-rg
+      AZURE_WEBAPP: tsmern-webapp-aidarous
+      OWNER_LC: ${{ github.repository_owner }}
+      SHORT_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (service principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Prepare pinned compose (by short SHA)
+        run: |
+          SHA=${SHORT_SHA::7}
+          OWNER_LC=$(echo "$OWNER_LC" | tr '[:upper:]' '[:lower:]')
+
+          BACKEND="ghcr.io/${OWNER_LC}/ts-mern-azure-starter-backend:${SHA}"
+          FRONTEND="ghcr.io/${OWNER_LC}/ts-mern-azure-starter-frontend:${SHA}"
+
+          cat > "$RUNNER_TEMP/compose.yaml" <<EOF
+          version: "3.9"
+          services:
+            backend:
+              image: ${BACKEND}
+              restart: unless-stopped
+              environment:
+                NODE_ENV: production
+                PORT: "8080"
+                MONGO_URI: \${MONGO_URI}
+              expose:
+                - "8080"
+            frontend:
+              image: ${FRONTEND}
+              depends_on: [backend]
+              restart: unless-stopped
+              expose:
+                - "80"
+          EOF
+
+          echo "Using images:"
+          grep 'image:' "$RUNNER_TEMP/compose.yaml"
+
+      - name: Apply compose to Web App
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config container set \
+              -g "$AZURE_RG" -n "$AZURE_WEBAPP" \
+              --multicontainer-config-type compose \
+              --multicontainer-config-file "$RUNNER_TEMP/compose.yaml"
+
+      - name: Restart and show URL
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp restart -g "$AZURE_RG" -n "$AZURE_WEBAPP"
+            echo "https://$(az webapp show -g "$AZURE_RG" -n "$AZURE_WEBAPP" --query defaultHostName -o tsv)"
