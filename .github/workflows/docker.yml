@@ -3,9 +3,9 @@ name: CI + Build/Push (GHCR) + Deploy (Azure)
 on:
   push:
     branches:
-      - '**'          # CI on all branches
-  pull_request:       # CI on PRs
-  workflow_dispatch:  # manual run
+      - "**" # CI on all branches
+  pull_request: # CI on PRs
+  workflow_dispatch: # manual run
 
 permissions:
   contents: read
@@ -105,13 +105,21 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Create compose.yaml with pinned SHA (workspace)
+      - name: Prepare pinned compose (by short SHA) in workspace
         run: |
           SHA=${GITHUB_SHA::7}
           OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}
+
           cat > compose.yaml <<EOF
           version: "3.9"
           services:
+            frontend:
+              image: ghcr.io/${OWNER_LC}/ts-mern-azure-starter-frontend:${SHA}
+              restart: unless-stopped
+              depends_on: [backend]
+              expose:
+                - "80"
+
             backend:
               image: ghcr.io/${OWNER_LC}/ts-mern-azure-starter-backend:${SHA}
               restart: unless-stopped
@@ -121,13 +129,8 @@ jobs:
                 MONGO_URI: \${MONGO_URI}
               expose:
                 - "8080"
-            frontend:
-              image: ghcr.io/${OWNER_LC}/ts-mern-azure-starter-frontend:${SHA}
-              depends_on: [backend]
-              restart: unless-stopped
-              expose:
-                - "80"
           EOF
+
           echo "Using images:"; grep 'image:' compose.yaml
 
       - name: Apply compose to Web App
