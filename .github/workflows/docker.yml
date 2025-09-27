@@ -210,15 +210,13 @@ jobs:
           sbom: false
 
   # ---------- Deploy to Azure Web App (compose pinned to SHA) ----------
-  deploy-azure:
+    deploy-azure:
     needs: build-and-push
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       AZURE_RG: tsmern-rg
       AZURE_WEBAPP: tsmern-webapp-aidarous
-      OWNER_LC: ${{ github.repository_owner }}
-      SHORT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -227,45 +225,45 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Prepare pinned compose (by short SHA)
+      - name: Prepare pinned compose (by short SHA) in workspace
         run: |
-          SHA=${SHORT_SHA::7}
-          OWNER_LC=$(echo "$OWNER_LC" | tr '[:upper:]' '[:lower:]')
+          SHA=${GITHUB_SHA::7}
+          OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}
 
-          BACKEND="ghcr.io/${OWNER_LC}/ts-mern-azure-starter-backend:${SHA}"
-          FRONTEND="ghcr.io/${OWNER_LC}/ts-mern-azure-starter-frontend:${SHA}"
-
-          cat > "$RUNNER_TEMP/compose.yaml" <<EOF
+          # write compose.yaml into the workspace (current dir)
+          cat > compose.yaml <<'YAML'
           version: "3.9"
           services:
             backend:
-              image: ${BACKEND}
+              image: ghcr.io/OWNER/ts-mern-azure-starter-backend:SHA
               restart: unless-stopped
               environment:
                 NODE_ENV: production
                 PORT: "8080"
-                MONGO_URI: \${MONGO_URI}
+                MONGO_URI: ${MONGO_URI}
               expose:
                 - "8080"
             frontend:
-              image: ${FRONTEND}
+              image: ghcr.io/OWNER/ts-mern-azure-starter-frontend:SHA
               depends_on: [backend]
               restart: unless-stopped
               expose:
                 - "80"
-          EOF
+          YAML
 
-          echo "Using images:"
-          grep 'image:' "$RUNNER_TEMP/compose.yaml"
+          # substitute OWNER and SHA placeholders
+          sed -i "s/OWNER/${OWNER_LC}/g; s/SHA/${SHA}/g" compose.yaml
+          echo "Using images:"; grep 'image:' compose.yaml
 
       - name: Apply compose to Web App
         uses: azure/cli@v2
         with:
           inlineScript: |
+            # azure/cli action starts in the workspace, so './compose.yaml' is visible
             az webapp config container set \
               -g "$AZURE_RG" -n "$AZURE_WEBAPP" \
               --multicontainer-config-type compose \
-              --multicontainer-config-file "$RUNNER_TEMP/compose.yaml"
+              --multicontainer-config-file "./compose.yaml"
 
       - name: Restart and show URL
         uses: azure/cli@v2
